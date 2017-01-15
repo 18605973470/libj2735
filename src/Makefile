@@ -1,28 +1,6 @@
-default: libj2735.a
 # Can also be libj2735.so
-
-rebuild:
-	$(MAKE) clean
-	$(MAKE) regen-makefile
-	$(MAKE)
-	$(MAKE) clean
-	$(MAKE) mk2
-
-CFLAGS+=-Werror -Wall -I.. -I../../../../ieee1609/kernel/include/ -I../../../../cohda/kernel/include/
-
-# Comment/uncomment the following line to disable/enable debugging
-DEBUG = n
-ifeq ($(DEBUG),y)
-  # "-O" is needed to expand inlines
-  CFLAGS += -O -g -DDEBUG 
-else
-CFLAGS += -O2
-endif
-
-# Change compiler to transplant
-#CROSS_COMPILE = arm-linux-gnueabihf-
-CC = $(CROSS_COMPILE)gcc
-AR = $(CROSS_COMPILE)ar
+TARGET = libj2735.a
+all: $(TARGET) 
 
 ASN_MODULE_SOURCES=	\
 	AlaCarte.c	\
@@ -588,145 +566,27 @@ ASN_MODULE_HEADERS+=per_encoder.h
 ASN_MODULE_SOURCES+=per_encoder.c
 ASN_MODULE_HEADERS+=per_opentype.h
 ASN_MODULE_SOURCES+=per_opentype.c
-ASN_CONVERTER_SOURCES+=converter-sample.c
 
+CFLAGS += -Wall -I. -O #-g -DDEBUG
+SHARED_FLAGS = -fPIC -shared
 
-lib_LTLIBRARIES=libsomething.la
-libsomething_la_SOURCES=$(ASN_MODULE_SOURCES) $(ASN_MODULE_HEADERS)
+# Change compiler to transplant
+#CROSS_COMPILE = arm-linux-gnueabihf-
+CC = $(CROSS_COMPILE)gcc
+AR = $(CROSS_COMPILE)ar
 
-# This file may be used as an input for make(3)
-# Remove the lines below to convert it into a pure .am file
-TARGET = dsrc-bsm
-CFLAGS += -DPDU=BasicSafetyMessage -I.
-OBJS=${ASN_MODULE_SOURCES:.c=.o} ${ASN_CONVERTER_SOURCES:.c=.o}
-
-all: BasicSafetyMessage.c $(TARGET)
-
-$(TARGET): ${OBJS}
-	$(CC) $(CFLAGS) -o $(TARGET) ${OBJS} $(LDFLAGS) $(LIBS)
-
-.SUFFIXES:
-.SUFFIXES: .c .o
+OBJS=${ASN_MODULE_SOURCES:.c=.o}
 
 .c.o:
 	$(CC) $(CFLAGS) -o $@ -c $<
 
-clean: clean-extra
-	rm -f $(TARGET)
-	rm -f $(OBJS)
-
-regen: regenerate-from-asn1-source
-
-regenerate-from-asn1-source-ORIG:
-	../../../../tools/asn1c/asn1c/asn1c -S ../../../../tools/asn1c/skeletons -pdu=BasicSafetyMessage -fcompound-names -fnative-types DSRC_R36_Source.ASN
-
-
-LIB_OBJS=${ASN_MODULE_SOURCES:.c=.o}
-
-ARCH ?= $(shell uname --machine)
-
-libj2735.a: $(LIB_OBJS)
+libj2735.a: $(OBJS)
 	$(AR) rcs $@ $^
+	mv $@ ../lib/$@
 
-SHARED_FLAG = -fPIC -shared
+libj2735.so: $(OBJS) 
+	$(CC) $(OBJS) $(CFLAGS) $(SHARED_FLAGS) -o $@
+	mv $@ ../lib/$@
 
-libj2735.so: $(ASN_MODULE_SOURCES) $(ASN_MODULE_HEADERS)
-	$(CC) $(ASN_MODULE_SOURCES) $(CFLAGS) $(SHARED_FLAG) -o $@
-
-clean-extra:
-	rm -f libbsm.a
-	rm -f $(LIB_OBJS)
-	rm -f *.orig
-	rm -f .Makefile.*.old
-
-regenerate-from-asn1-source: regenerate-from-asn1-source-ORIG mangle
-
-mangle:
-	../MangleFiles.py --clobber --verbose -- ../MangleFiles.list
-
-BasicSafetyMessage.c: ../sample.makefile.regen DSRC_R36_Source.ASN
-	$(MAKE) regen-makefile
-	@touch BasicSafetyMessage.c
-	$(MAKE)
-
-regen-makefile:
-	cp Makefile .Makefile.$$.old
-	ASN1CMDOPTS="-fcompound-names -fnative-types" \
-	ASN1MODULES="DSRC_R36_Source.ASN" \
-	ASN1PDU=BasicSafetyMessage \
-	PROGNAME=dsrc-bsm \
-	../sample.makefile.regen
-	$(MAKE) mangle
-
-check: ${TARGET} check-ber check-xer check-per
-	@echo ================
-	@echo All tests passed
-	@echo ================
-
-check-ber:
-	@if test -f sample-BasicSafetyMessage-1.[db]er ; then \
-	for f in sample-BasicSafetyMessage-*.[db]er; do \
-	for b in 1 17 33 980 8192; do \
-	echo "Recoding $$f into XER and back ($$b)..."; \
-	./${TARGET} -b $$b -iber -oxer $$f > ./.tmp.1.$$$$ || exit 2; \
-	./${TARGET} -b $$b -ixer -oxer ./.tmp.1.$$$$ > ./.tmp.2.$$$$ || exit 3; \
-	diff ./.tmp.1.$$$$ ./.tmp.2.$$$$ || exit 4; \
-	rm -f ./.tmp.[12].$$$$; \
-	echo "Test junking $$f (please wait)..."; \
-	./${TARGET} -J0.0001 -n 1000 -b $$b -iber -onull $$f || exit 5; \
-	./${TARGET} -J0.001 -n 1000 -b $$b -iber -onull $$f || exit 6; \
-	done; done; fi
-
-check-xer:
-	@if test -f sample-BasicSafetyMessage-1.xer ; then \
-	for f in sample-BasicSafetyMessage-*.xer; do \
-	for b in 1 17 33 980 8192; do \
-	echo "Recoding $$f into DER and back ($$b)..."; \
-	./${TARGET} -b $$b -ixer -oder $$f > ./.tmp.1.$$$$ || exit 2; \
-	./${TARGET} -b $$b -iber -oxer ./.tmp.1.$$$$ > ./.tmp.2.$$$$ || exit 3; \
-	diff $$f ./.tmp.2.$$$$ || exit 4; \
-	rm -f ./.tmp.[12].$$$$; \
-	echo "Test junking $$f (please wait)..."; \
-	./${TARGET} -J0.0001 -n 1000 -b $$b -ixer -onull $$f || exit 5; \
-	./${TARGET} -J0.001 -n 1000 -b $$b -ixer -onull $$f || exit 6; \
-	done; done; fi
-
-check-per:
-	@if test -f sample-BasicSafetyMessage-1-nopad.per ; then \
-	for f in sample-BasicSafetyMessage-[1-9]-nopad.per; do \
-	for b in 1 17 33 980 8192; do \
-	echo "Recoding non-padded $$f into DER into XER and back ($$b)..."; \
-	./${TARGET} -b $$b -per-nopad -iper -oder $$f > ./.tmp.1.$$$$ || exit 2; \
-	./${TARGET} -b $$b -iber -oxer ./.tmp.1.$$$$ > ./.tmp.2.$$$$ || exit 3; \
-	./${TARGET} -b $$b -ixer -oder ./.tmp.2.$$$$ > ./.tmp.3.$$$$ || exit 4; \
-	diff ./.tmp.1.$$$$ ./.tmp.3.$$$$ || exit 5; \
-	rm -f ./.tmp.[123].$$$$; \
-	echo "Test junking $$f (please wait)..."; \
-	./${TARGET} -J0.0001 -n 1000 -b $$b -per-nopad -iper -onull $$f || exit 6; \
-	./${TARGET} -J0.001 -n 1000 -b $$b -per-nopad -iper -onull $$f || exit 7; \
-	done; done; fi
-	@if test -f sample-BasicSafetyMessage-1.per ; then \
-	for f in sample-*-[1-9].per; do \
-	pdu=`echo $$f | sed -E -e "s/sample-([A-Za-z-]+)-[0-9].*/\\1/"`; \
-	for b in 1 17 33 980 8192; do \
-	echo "Recoding $$f into DER into XER and back ($$b)..."; \
-	./${TARGET} -b $$b -p $$pdu -iper -oder $$f > ./.tmp.1.$$$$ || exit 3; \
-	./${TARGET} -b $$b -p $$pdu -iber -oxer ./.tmp.1.$$$$ > ./.tmp.2.$$$$ || exit 4; \
-	./${TARGET} -b $$b -p $$pdu -ixer -oper ./.tmp.2.$$$$ > ./.tmp.1.$$$$ || exit 5; \
-	diff $$f ./.tmp.1.$$$$ || exit 6; \
-	rm -f ./.tmp.[12].$$$$; \
-	echo "Test junking $$f (please wait)..."; \
-	./${TARGET} -J0.0001 -n 1000 -b $$b -iper -onull $$f || exit 7; \
-	./${TARGET} -J0.001 -n 1000 -b $$b -iper -onull $$f || exit 8; \
-	done; done; fi
-
-distclean: clean
-	rm -f $(ASN_MODULE_SOURCES)
-	rm -f $(ASN_MODULE_HEADERS)
-	rm -f $(ASN_CONVERTER_SOURCES) $(ASN_CONVERTER_HEADERS)
-	rm -f Makefile.am.sample
-	rm -f libbsm*.a
-
-mk2:
-	env ARCH=arm PATH=$(PATH):/opt/freescale/usr/local/gcc-4.1.2-glibc-2.5-nptl-3/arm-none-linux-gnueabi/bin CROSS_COMPILE="ccache arm-none-linux-gnueabi-" $(MAKE)
-
+clean:
+	rm -f $(OBJS) 
